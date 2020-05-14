@@ -28,7 +28,7 @@ fn main() {
     // Maps to OS_LOG_TYPE_ERROR
     warn!("Warn");
 
-    // Maps to OS_LOG_TYPE_CRITICAL
+    // Maps to OS_LOG_TYPE_FAULT
     error!("Error");
 }
 ```
