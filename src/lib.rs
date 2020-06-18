@@ -11,9 +11,8 @@ use std::{ffi::{c_void, CString}};
 
 #[inline]
 fn to_cstr(message: &str) -> CString {
-    CString::new(message).expect(
-        "Failed to convert message to a C string. Does it contain a NULL byte in the middle?",
-    )
+    let fixed = message.replace('\0', "(null)");
+    CString::new(fixed).unwrap()
 }
 
 #[repr(u8)]
@@ -113,6 +112,30 @@ impl OsLog {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_subsystem_interior_null() {
+        let log = OsLog::new("oslog\0test", "category");
+        log.with_level(Level::Debug, "Hi");
+    }
+
+    #[test]
+    fn test_category_interior_null() {
+        let log = OsLog::new("oslog", "category\0test");
+        log.with_level(Level::Debug, "Hi");
+    }
+
+    #[test]
+    fn test_message_interior_null() {
+        let log = OsLog::new("oslog", "category");
+        log.with_level(Level::Debug, "Hi\0test");
+    }
+
+    #[test]
+    fn test_message_emoji() {
+        let log = OsLog::new("oslog", "category");
+        log.with_level(Level::Debug, "\u{1F601}");
+    }
 
     #[test]
     fn test_global_log_with_level() {
