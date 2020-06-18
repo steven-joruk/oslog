@@ -4,7 +4,7 @@ By default support for the [log](https://docs.rs/log) crate is provided, but you
 
 ```toml
 [dependencies]
-oslog = { version = "0.0.1", default-features = false }
+oslog = { version = "0.0.2", default-features = false }
 ```
 
 # Example
