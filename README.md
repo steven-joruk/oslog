@@ -5,7 +5,7 @@ can disable it using the feature flags if you like:
 
 ```toml
 [dependencies]
-oslog = { version = "0.0.2", default-features = false }
+oslog = { version = "0.0.3", default-features = false }
 ```
 
 When making use of targets (`info!(target: "t", "m");`), you should be aware
