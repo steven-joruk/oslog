@@ -15,10 +15,11 @@ category = ["development-tools::debugging"]
 default = ["logger"]
 
 # Enables support for the `log` crate
-logger = ["log"]
+logger = ["dashmap", "log"]
 
 [dependencies]
 log = { version = "0.4", features = ["std"], optional = true }
+dashmap = { version = "3", optional = true }
 
 [build-dependencies]
 cc = "1.0"

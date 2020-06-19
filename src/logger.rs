@@ -1,9 +1,11 @@
-use log::{LevelFilter, Log, Metadata, Record};
 use crate::OsLog;
+use log::{LevelFilter, Log, Metadata, Record};
+use dashmap::DashMap;
 
 pub struct OsLogger {
-    logger: OsLog,
+    loggers: DashMap<String, OsLog>,
     level_filter: LevelFilter,
+    subsystem: String,
 }
 
 impl Log for OsLogger {
@@ -12,12 +14,23 @@ impl Log for OsLogger {
             return false;
         }
 
-        self.logger.level_is_enabled(metadata.level().into())
+        let logger = match self.loggers.get(metadata.target()) {
+            Some(l) => l,
+            None => return false,
+        };
+
+        logger.level_is_enabled(metadata.level().into())
     }
 
     fn log(&self, record: &Record) {
         let message = std::format!("{}", record.args());
-        self.logger.with_level(record.level().into(), &message);
+
+        let logger = self
+            .loggers
+            .entry(record.target().into())
+            .or_insert(OsLog::new(&self.subsystem, record.target()));
+
+        logger.with_level(record.level().into(), &message);
     }
 
     fn flush(&self) {}
@@ -27,9 +40,14 @@ impl OsLogger {
     /// Creates a new logger. You must also call `init` to finalize the set up.
     /// By default the level filter will be set to `LevelFilter::Trace`.
     pub fn new(subsystem: &str, category: &str) -> Self {
+        let loggers = DashMap::new();
+        let log = OsLog::new(subsystem, category);
+        loggers.insert(category.to_string(), log);
+
         Self {
-            logger: OsLog::new(subsystem, category),
+            loggers,
             level_filter: LevelFilter::Trace,
+            subsystem: subsystem.to_string(),
         }
     }
 
@@ -53,15 +71,15 @@ mod tests {
 
     #[test]
     fn test_basic_usage() {
-        OsLogger::new("com.example.test", "testing")
-            .level_filter(LevelFilter::Debug)
+        OsLogger::new("com.example.oslog", "testing")
+            .level_filter(LevelFilter::Trace)
             .init()
             .unwrap();
 
         trace!("Trace");
-        debug!("Debug");
+        debug!(target: "Settings", "Debug");
         info!("Info");
-        warn!("Warn");
+        warn!(target: "Database", "Warn");
         error!("Error");
     }
 }

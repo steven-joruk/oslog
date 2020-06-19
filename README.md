@@ -1,11 +1,17 @@
 A minimal wrapper around Apple's unified logging system.
 
-By default support for the [log](https://docs.rs/log) crate is provided, but you can disable it using the feature flags if you like:
+By default support for the [log](https://docs.rs/log) crate is provided, but you
+can disable it using the feature flags if you like:
 
 ```toml
 [dependencies]
 oslog = { version = "0.0.2", default-features = false }
 ```
+
+When making use of targets (`info!(target: "t", "m");`), you should be aware
+that a new log is allocated and stored in a map for the lifetime of the program.
+I expect log allocations are extremely small, but haven't attempted to verify
+it.
 
 # Example
 
@@ -17,13 +23,13 @@ fn main() {
         .unwrap();
 
     // Maps to OS_LOG_TYPE_DEBUG
-    trace!("Trace");
+    trace!(target: "Settings", "Trace");
 
     // Maps to OS_LOG_TYPE_INFO
     debug!("Debug");
 
     // Maps to OS_LOG_TYPE_DEFAULT
-    info!("Info");
+    info!(target: "Parsing", "Info");
 
     // Maps to OS_LOG_TYPE_ERROR
     warn!("Warn");
@@ -35,9 +41,6 @@ fn main() {
 
 # Missing features
 
-Almost everything :).
-
-* Multiple categories, although I'm planning on adding optional support for setting the category to the module name which invoked the log call.
 * Activities
 * Tracing
 * Native support for line numbers and file names.

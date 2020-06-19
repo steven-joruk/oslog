@@ -4,10 +4,10 @@ mod sys;
 mod logger;
 
 #[cfg(feature = "logger")]
-pub use logger::OsLogger as OsLogger;
+pub use logger::OsLogger;
 
 use crate::sys::*;
-use std::{ffi::{c_void, CString}};
+use std::ffi::{c_void, CString};
 
 #[inline]
 fn to_cstr(message: &str) -> CString {
@@ -115,25 +115,25 @@ mod tests {
 
     #[test]
     fn test_subsystem_interior_null() {
-        let log = OsLog::new("oslog\0test", "category");
+        let log = OsLog::new("com.example.oslog\0test", "category");
         log.with_level(Level::Debug, "Hi");
     }
 
     #[test]
     fn test_category_interior_null() {
-        let log = OsLog::new("oslog", "category\0test");
+        let log = OsLog::new("com.example.oslog", "category\0test");
         log.with_level(Level::Debug, "Hi");
     }
 
     #[test]
     fn test_message_interior_null() {
-        let log = OsLog::new("oslog", "category");
+        let log = OsLog::new("com.example.oslog", "category");
         log.with_level(Level::Debug, "Hi\0test");
     }
 
     #[test]
     fn test_message_emoji() {
-        let log = OsLog::new("oslog", "category");
+        let log = OsLog::new("com.example.oslog", "category");
         log.with_level(Level::Debug, "\u{1F601}");
     }
 
@@ -159,7 +159,7 @@ mod tests {
 
     #[test]
     fn test_custom_log_with_level() {
-        let log = OsLog::new("com.example.test", "testing");
+        let log = OsLog::new("com.example.oslog", "testing");
         log.with_level(Level::Debug, "Debug");
         log.with_level(Level::Info, "Info");
         log.with_level(Level::Default, "Default");
@@ -169,7 +169,7 @@ mod tests {
 
     #[test]
     fn test_custom_log() {
-        let log = OsLog::new("com.example.test", "testing");
+        let log = OsLog::new("com.example.oslog", "testing");
         log.debug("Debug");
         log.info("Info");
         log.default("Default");
