@@ -1,36 +1,33 @@
 use crate::OsLog;
-use log::{LevelFilter, Log, Metadata, Record};
 use dashmap::DashMap;
+use log::{LevelFilter, Log, Metadata, Record};
 
 pub struct OsLogger {
-    loggers: DashMap<String, OsLog>,
-    level_filter: LevelFilter,
+    loggers: DashMap<String, (Option<LevelFilter>, OsLog)>,
     subsystem: String,
 }
 
 impl Log for OsLogger {
     fn enabled(&self, metadata: &Metadata) -> bool {
-        if metadata.level() > self.level_filter {
-            return false;
-        }
+        let max_level = self
+            .loggers
+            .get(metadata.target())
+            .and_then(|pair| (*pair).0)
+            .unwrap_or_else(|| log::max_level());
 
-        let logger = match self.loggers.get(metadata.target()) {
-            Some(l) => l,
-            None => return false,
-        };
-
-        logger.level_is_enabled(metadata.level().into())
+        metadata.level() <= max_level
     }
 
     fn log(&self, record: &Record) {
-        let message = std::format!("{}", record.args());
+        if self.enabled(record.metadata()) {
+            let pair = self
+                .loggers
+                .entry(record.target().into())
+                .or_insert((None, OsLog::new(&self.subsystem, record.target())));
 
-        let logger = self
-            .loggers
-            .entry(record.target().into())
-            .or_insert(OsLog::new(&self.subsystem, record.target()));
-
-        logger.with_level(record.level().into(), &message);
+            let message = std::format!("{}", record.args());
+            (*pair).1.with_level(record.level().into(), &message);
+        }
     }
 
     fn flush(&self) {}
@@ -39,27 +36,30 @@ impl Log for OsLogger {
 impl OsLogger {
     /// Creates a new logger. You must also call `init` to finalize the set up.
     /// By default the level filter will be set to `LevelFilter::Trace`.
-    pub fn new(subsystem: &str, category: &str) -> Self {
-        let loggers = DashMap::new();
-        let log = OsLog::new(subsystem, category);
-        loggers.insert(category.to_string(), log);
-
+    pub fn new(subsystem: &str) -> Self {
         Self {
-            loggers,
-            level_filter: LevelFilter::Trace,
+            loggers: DashMap::new(),
             subsystem: subsystem.to_string(),
         }
     }
 
-    /// Modifies the level filter, which by default is `LevelFilter::Trace`.
     /// Only levels at or above `level` will be logged.
-    pub fn level_filter(mut self, level: LevelFilter) -> Self {
-        self.level_filter = level;
+    pub fn level_filter(self, level: LevelFilter) -> Self {
+        log::set_max_level(level);
+        self
+    }
+
+    /// Sets or updates the category's level filter.
+    pub fn category_level_filter(self, category: &str, level: LevelFilter) -> Self {
+        self.loggers
+            .entry(category.into())
+            .and_modify(|(existing_level, _)| *existing_level = Some(level))
+            .or_insert((Some(level), OsLog::new(&self.subsystem, category)));
+
         self
     }
 
     pub fn init(self) -> Result<(), log::SetLoggerError> {
-        log::set_max_level(self.level_filter);
         log::set_boxed_logger(Box::new(self))
     }
 }
@@ -71,13 +71,22 @@ mod tests {
 
     #[test]
     fn test_basic_usage() {
-        OsLogger::new("com.example.oslog", "testing")
+        OsLogger::new("com.example.oslog")
             .level_filter(LevelFilter::Trace)
+            .category_level_filter("Settings", LevelFilter::Warn)
+            .category_level_filter("Database", LevelFilter::Error)
+            .category_level_filter("Database", LevelFilter::Trace)
             .init()
             .unwrap();
 
+        // This will not be logged because of its category's custom level filter.
+        info!(target: "Settings", "Info");
+
+        warn!(target: "Settings", "Warn");
+        error!(target: "Settings", "Error");
+
         trace!("Trace");
-        debug!(target: "Settings", "Debug");
+        debug!("Debug");
         info!("Info");
         warn!(target: "Database", "Warn");
         error!("Error");

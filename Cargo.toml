@@ -8,7 +8,7 @@ edition = "2018"
 license = "MIT"
 readme = "README.md"
 keywords = ["log", "logging", "unified", "macos", "apple"]
-category = ["development-tools::debugging"]
+categories = ["development-tools::debugging"]
 
 [features]
 
