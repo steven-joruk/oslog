@@ -1,12 +1,8 @@
 A minimal wrapper around Apple's unified logging system.
 
-By default support for the [log](https://docs.rs/log) crate is provided, but you
-can disable it using the feature flags if you like:
-
-```toml
-[dependencies]
-oslog = { version = "0.0.3", default-features = false }
-```
+By default support for the [log](https://docs.rs/log) crate is provided, but if
+you would prefer just to use the lower level bindings you can disable the
+default features.
 
 When making use of targets (`info!(target: "t", "m");`), you should be aware
 that a new log is allocated and stored in a map for the lifetime of the program.
