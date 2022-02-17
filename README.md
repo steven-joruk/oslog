@@ -1,3 +1,5 @@
+[![Crate](https://img.shields.io/crates/v/oslog.svg)](https://crates.io/crates/oslog)
+
 A minimal wrapper around Apple's unified logging system.
 
 By default support for the [log](https://docs.rs/log) crate is provided, but if
@@ -9,7 +11,9 @@ that a new log is allocated and stored in a map for the lifetime of the program.
 I expect log allocations are extremely small, but haven't attempted to verify
 it.
 
-# Example
+## Logging example
+
+This is behind the `logger` feature flag and is enabled by default.
 
 ```rust
 fn main() {
@@ -36,7 +40,7 @@ fn main() {
 }
 ```
 
-# Missing features
+## Missing features
 
 * Activities
 * Tracing
