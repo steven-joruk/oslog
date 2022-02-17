@@ -1,25 +1,24 @@
 [package]
 name = "oslog"
-description = "A minimal safe wrapper around Apple's unified logging system"
+description = "A minimal safe wrapper around Apple's Logging system"
 repository = "https://github.com/steven-joruk/oslog"
 version = "0.1.1-alpha.0"
 authors = ["Steven Joruk <steven@joruk.com>"]
 edition = "2018"
 license = "MIT"
 readme = "README.md"
-keywords = ["log", "logging", "unified", "macos", "apple"]
+keywords = ["log", "logging", "macos", "apple"]
 categories = ["development-tools::debugging"]
 
 [features]
-
 default = ["logger"]
 
-# Enables support for the `log` crate
+# Enables support for the `log` crate.
 logger = ["dashmap", "log"]
 
 [dependencies]
-log = { version = "0.4", features = ["std"], optional = true }
-dashmap = { version = "4", optional = true }
+log = { version = "0.4.14", default-features = false, features = ["std"], optional = true }
+dashmap = { version = "5.1.0", optional = true }
 
 [build-dependencies]
-cc = "1.0"
+cc = "1.0.73"
