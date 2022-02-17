@@ -55,6 +55,7 @@ impl Drop for OsLog {
 }
 
 impl OsLog {
+    #[inline]
     pub fn new(subsystem: &str, category: &str) -> Self {
         let subsystem = to_cstr(subsystem);
         let category = to_cstr(category);
@@ -66,6 +67,7 @@ impl OsLog {
         Self { inner }
     }
 
+    #[inline]
     pub fn global() -> Self {
         let inner = unsafe { wrapped_get_default_log() };
 
@@ -74,36 +76,43 @@ impl OsLog {
         Self { inner }
     }
 
+    #[inline]
     pub fn with_level(&self, level: Level, message: &str) {
         let message = to_cstr(message);
         unsafe { wrapped_os_log_with_type(self.inner, level as u8, message.as_ptr()) }
     }
 
+    #[inline]
     pub fn debug(&self, message: &str) {
         let message = to_cstr(message);
         unsafe { wrapped_os_log_debug(self.inner, message.as_ptr()) }
     }
 
+    #[inline]
     pub fn info(&self, message: &str) {
         let message = to_cstr(message);
         unsafe { wrapped_os_log_info(self.inner, message.as_ptr()) }
     }
 
+    #[inline]
     pub fn default(&self, message: &str) {
         let message = to_cstr(message);
         unsafe { wrapped_os_log_default(self.inner, message.as_ptr()) }
     }
 
+    #[inline]
     pub fn error(&self, message: &str) {
         let message = to_cstr(message);
         unsafe { wrapped_os_log_error(self.inner, message.as_ptr()) }
     }
 
+    #[inline]
     pub fn fault(&self, message: &str) {
         let message = to_cstr(message);
         unsafe { wrapped_os_log_fault(self.inner, message.as_ptr()) }
     }
 
+    #[inline]
     pub fn level_is_enabled(&self, level: Level) -> bool {
         unsafe { os_log_type_enabled(self.inner, level as u8) }
     }
