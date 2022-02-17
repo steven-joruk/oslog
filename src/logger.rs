@@ -13,7 +13,7 @@ impl Log for OsLogger {
             .loggers
             .get(metadata.target())
             .and_then(|pair| (*pair).0)
-            .unwrap_or_else(|| log::max_level());
+            .unwrap_or_else(log::max_level);
 
         metadata.level() <= max_level
     }
