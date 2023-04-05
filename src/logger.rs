@@ -12,7 +12,7 @@ impl Log for OsLogger {
         let max_level = self
             .loggers
             .get(metadata.target())
-            .and_then(|pair| (*pair).0)
+            .and_then(|pair| pair.0)
             .unwrap_or_else(log::max_level);
 
         metadata.level() <= max_level
@@ -26,7 +26,7 @@ impl Log for OsLogger {
                 .or_insert((None, OsLog::new(&self.subsystem, record.target())));
 
             let message = std::format!("{}", record.args());
-            (*pair).1.with_level(record.level().into(), &message);
+            pair.1.with_level(record.level().into(), &message);
         }
     }
 

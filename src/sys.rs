@@ -18,14 +18,14 @@ pub const OS_LOG_TYPE_DEBUG: os_log_type_t = 2;
 pub const OS_LOG_TYPE_ERROR: os_log_type_t = 16;
 pub const OS_LOG_TYPE_FAULT: os_log_type_t = 17;
 
-/// Provided by the OS.
+// Provided by the OS.
 extern "C" {
     pub fn os_log_create(subsystem: *const c_char, category: *const c_char) -> os_log_t;
     pub fn os_release(object: *mut c_void);
     pub fn os_log_type_enabled(log: os_log_t, level: os_log_type_t) -> bool;
 }
 
-/// Wrappers defined in wrapper.c because most of the os_log_* APIs are macros.
+// Wrappers defined in wrapper.c because most of the os_log_* APIs are macros.
 extern "C" {
     pub fn wrapped_get_default_log() -> os_log_t;
     pub fn wrapped_os_log_with_type(log: os_log_t, log_type: os_log_type_t, message: *const c_char);
