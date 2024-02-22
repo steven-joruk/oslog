@@ -40,8 +40,12 @@ fn main() {
 }
 ```
 
-## Missing features
+## Limitations
 
-* Activities
-* Tracing
-* Native support for line numbers and file names.
+Most of Apple's logging related functions are macros that enable some
+optimizations as well as providing contextual data such as source file location.
+
+By wrapping the macros for use from Rust, we lose those benefits.
+
+Attempting to work around this would involve digging in to opaque types, which
+would be an automatic or eventual rejection from the App store.
