@@ -28,12 +28,8 @@ extern "C" {
 // Wrappers defined in wrapper.c because most of the os_log_* APIs are macros.
 extern "C" {
     pub fn wrapped_get_default_log() -> os_log_t;
+    pub fn wrapped_os_log_type_enabled(log: os_log_t, log_type: os_log_type_t) -> bool;
     pub fn wrapped_os_log_with_type(log: os_log_t, log_type: os_log_type_t, message: *const c_char);
-    pub fn wrapped_os_log_debug(log: os_log_t, message: *const c_char);
-    pub fn wrapped_os_log_info(log: os_log_t, message: *const c_char);
-    pub fn wrapped_os_log_default(log: os_log_t, message: *const c_char);
-    pub fn wrapped_os_log_error(log: os_log_t, message: *const c_char);
-    pub fn wrapped_os_log_fault(log: os_log_t, message: *const c_char);
 }
 
 #[cfg(test)]
@@ -58,32 +54,30 @@ mod tests {
         let message = CString::new("Hello!").unwrap();
 
         unsafe {
-            wrapped_os_log_debug(wrapped_get_default_log(), message.as_ptr());
-            wrapped_os_log_info(wrapped_get_default_log(), message.as_ptr());
-            wrapped_os_log_default(wrapped_get_default_log(), message.as_ptr());
-            wrapped_os_log_error(wrapped_get_default_log(), message.as_ptr());
-            wrapped_os_log_fault(wrapped_get_default_log(), message.as_ptr());
-
             wrapped_os_log_with_type(
                 wrapped_get_default_log(),
                 OS_LOG_TYPE_DEBUG,
                 message.as_ptr(),
             );
+
             wrapped_os_log_with_type(
                 wrapped_get_default_log(),
                 OS_LOG_TYPE_INFO,
                 message.as_ptr(),
             );
+
             wrapped_os_log_with_type(
                 wrapped_get_default_log(),
                 OS_LOG_TYPE_DEFAULT,
                 message.as_ptr(),
             );
+
             wrapped_os_log_with_type(
                 wrapped_get_default_log(),
                 OS_LOG_TYPE_ERROR,
                 message.as_ptr(),
             );
+
             wrapped_os_log_with_type(
                 wrapped_get_default_log(),
                 OS_LOG_TYPE_FAULT,
@@ -100,12 +94,6 @@ mod tests {
         let message = CString::new("Hello!").unwrap();
 
         unsafe {
-            wrapped_os_log_debug(log, message.as_ptr());
-            wrapped_os_log_info(log, message.as_ptr());
-            wrapped_os_log_default(log, message.as_ptr());
-            wrapped_os_log_error(log, message.as_ptr());
-            wrapped_os_log_fault(log, message.as_ptr());
-
             wrapped_os_log_with_type(log, OS_LOG_TYPE_DEBUG, message.as_ptr());
             wrapped_os_log_with_type(log, OS_LOG_TYPE_INFO, message.as_ptr());
             wrapped_os_log_with_type(log, OS_LOG_TYPE_DEFAULT, message.as_ptr());

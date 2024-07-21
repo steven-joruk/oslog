@@ -8,12 +8,12 @@ default features.
 
 When making use of targets (`info!(target: "t", "m");`), you should be aware
 that a new log is allocated and stored in a map for the lifetime of the program.
-I expect log allocations are extremely small, but haven't attempted to verify
-it.
+Apple also recommends against using dynamically generated subsystems or
+categories when using Unified Logging directly, for the same reason.
 
 ## Logging example
 
-This is behind the `logger` feature flag and is enabled by default.
+This is behind the `log` feature flag and is enabled by default.
 
 ```rust
 fn main() {
@@ -40,6 +40,11 @@ fn main() {
 }
 ```
 
+## Features
+
+`log` enables [log](https://docs.rs/log/latest/log/) crate support via
+`OsLogger`.
+
 ## Limitations
 
 Most of Apple's logging related functions are macros that enable some
@@ -49,3 +54,6 @@ By wrapping the macros for use from Rust, we lose those benefits.
 
 Attempting to work around this would involve digging in to opaque types, which
 would be an automatic or eventual rejection from the App store.
+
+We also lose performance by having to convert log messages to C strings, even if
+there's no observer of in-memory log streams.
