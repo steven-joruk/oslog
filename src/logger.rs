@@ -1,12 +1,14 @@
 use crate::OsLog;
 use dashmap::DashMap;
+
+#[cfg(feature = "log4rs")]
 use derivative::Derivative;
 use log::{LevelFilter, Log, Metadata, Record};
 
-#[derive(Derivative)]
-#[derivative(Debug)]
+#[cfg_attr(feature = "log4rs", derive(Derivative))]
+#[cfg_attr(feature = "log4rs", derivative(Debug))]
 pub struct OsLogger {
-    #[derivative(Debug = "ignore")]
+    #[cfg_attr(feature = "log4rs", derivative(Debug = "ignore"))]
     loggers: DashMap<String, (Option<LevelFilter>, OsLog)>,
     subsystem: String,
 }
@@ -72,13 +74,15 @@ impl OsLogger {
 mod tests {
     use super::*;
     use log::{debug, error, info, trace, warn};
-    use log4rs::append::console::ConsoleAppender;
-    use log4rs::config::{Appender, Root};
-    use log4rs::encode::pattern::PatternEncoder;
-    use log4rs::Config;
 
+    #[cfg(feature = "log4rs")]
     #[test]
     fn test_log4rs() {
+        use log4rs::append::console::ConsoleAppender;
+        use log4rs::config::{Appender, Root};
+        use log4rs::encode::pattern::PatternEncoder;
+        use log4rs::Config;
+
         let os_logger = OsLogger::new("com.example.oslog")
             .level_filter(LevelFilter::Trace)
             .category_level_filter("Settings", LevelFilter::Warn)

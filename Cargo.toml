@@ -14,7 +14,10 @@ categories = ["development-tools::debugging"]
 default = ["logger"]
 
 # Enables support for the `log` crate.
-logger = ["dashmap", "log", "derivative"]
+logger = ["dashmap", "log"]
+
+# Enables usage with `log4rs` crate
+log4rs = ["logger", "derivative"]
 
 [dependencies]
 log = { version = "0.4.14", default-features = false, features = ["std"], optional = true }
