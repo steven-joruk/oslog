@@ -39,6 +39,12 @@ impl From<log::Level> for Level {
 
 pub struct OsLog {
     inner: os_log_t,
+    /// These need to remain allocated or system logging code can use
+    /// them after they are freed.
+    #[allow(dead_code)]
+    subsystem: Option<CString>,
+    #[allow(dead_code)]
+    category: Option<CString>,
 }
 
 unsafe impl Send for OsLog {}
@@ -64,7 +70,11 @@ impl OsLog {
 
         assert!(!inner.is_null(), "Unexpected null value from os_log_create");
 
-        Self { inner }
+        Self {
+            inner,
+            subsystem: Some(subsystem),
+            category: Some(category),
+        }
     }
 
     #[inline]
@@ -73,7 +83,11 @@ impl OsLog {
 
         assert!(!inner.is_null(), "Unexpected null value for OS_DEFAULT_LOG");
 
-        Self { inner }
+        Self {
+            inner,
+            subsystem: None,
+            category: None,
+        }
     }
 
     #[inline]
