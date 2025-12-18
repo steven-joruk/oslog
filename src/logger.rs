@@ -1,8 +1,14 @@
 use crate::OsLog;
 use dashmap::DashMap;
+
+#[cfg(feature = "log4rs")]
+use derivative::Derivative;
 use log::{LevelFilter, Log, Metadata, Record};
 
+#[cfg_attr(feature = "log4rs", derive(Derivative))]
+#[cfg_attr(feature = "log4rs", derivative(Debug))]
 pub struct OsLogger {
+    #[cfg_attr(feature = "log4rs", derivative(Debug = "ignore"))]
     loggers: DashMap<String, (Option<LevelFilter>, OsLog)>,
     subsystem: String,
     default_level: LevelFilter,
@@ -90,6 +96,55 @@ impl OsLogger {
 mod tests {
     use super::*;
     use log::{debug, error, info, trace, warn, LevelFilter, Metadata};
+
+    #[cfg(feature = "log4rs")]
+    #[test]
+    fn test_log4rs() {
+        use log4rs::append::console::ConsoleAppender;
+        use log4rs::config::{Appender, Root};
+        use log4rs::encode::pattern::PatternEncoder;
+        use log4rs::Config;
+
+        let os_logger = OsLogger::new("com.example.oslog")
+            .level_filter(LevelFilter::Trace)
+            .category_level_filter("Settings", LevelFilter::Warn)
+            .category_level_filter("Database", LevelFilter::Error)
+            .category_level_filter("Database", LevelFilter::Trace);
+
+        let stdout = ConsoleAppender::builder()
+            .encoder(Box::new(PatternEncoder::new("{m}{n}")))
+            .build();
+        match Config::builder()
+            .appender(Appender::builder().build("stdout", Box::new(stdout)))
+            .appender(Appender::builder().build("os_logger", Box::new(os_logger)))
+            .build(
+                Root::builder()
+                    .appender("stdout")
+                    .appender("os_logger")
+                    .build(LevelFilter::Debug),
+            ) {
+            Ok(config) => {
+                let handle = log4rs::init_config(config);
+                if let Err(e) = handle {
+                    println!("ERROR: failed to configure logging for stdout with {e:?}");
+                }
+            }
+            Err(e) => {
+                println!("ERROR: failed to prepare default logging configuration with {e:?}");
+            }
+        }
+        // This will not be logged to the Console because of its category's custom level filter.
+        info!(target: "Settings", "Info");
+
+        warn!(target: "Settings", "Warn");
+        error!(target: "Settings", "Error");
+
+        trace!("Trace");
+        debug!("Debug");
+        info!("Info");
+        warn!(target: "Database", "Warn");
+        error!("Error");
+    }
 
     #[test]
     fn test_basic_usage() {
