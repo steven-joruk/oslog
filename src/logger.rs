@@ -5,6 +5,7 @@ use log::{LevelFilter, Log, Metadata, Record};
 pub struct OsLogger {
     loggers: DashMap<String, (Option<LevelFilter>, OsLog)>,
     subsystem: String,
+    default_level: LevelFilter,
 }
 
 impl Log for OsLogger {
@@ -13,7 +14,7 @@ impl Log for OsLogger {
             .loggers
             .get(metadata.target())
             .and_then(|pair| pair.0)
-            .unwrap_or_else(log::max_level);
+            .unwrap_or(self.default_level);
 
         metadata.level() <= max_level
     }
@@ -40,12 +41,14 @@ impl OsLogger {
         Self {
             loggers: DashMap::new(),
             subsystem: subsystem.to_string(),
+            default_level: LevelFilter::Trace,
         }
     }
 
     /// Only levels at or above `level` will be logged.
-    pub fn level_filter(self, level: LevelFilter) -> Self {
-        log::set_max_level(level);
+    pub fn level_filter(mut self, level: LevelFilter) -> Self {
+        self.default_level = level;
+        self.update_global_max_level();
         self
     }
 
@@ -56,10 +59,29 @@ impl OsLogger {
             .and_modify(|(existing_level, _)| *existing_level = Some(level))
             .or_insert((Some(level), OsLog::new(&self.subsystem, category)));
 
+        self.update_global_max_level();
         self
     }
 
+    /// Updates the global max level based on the most permissive filter needed.
+    fn update_global_max_level(&self) {
+        let mut most_permissive = self.default_level;
+
+        // Check all category-specific filters to find the most permissive one
+        for entry in self.loggers.iter() {
+            if let Some(category_level) = entry.value().0 {
+                if category_level > most_permissive {
+                    most_permissive = category_level;
+                }
+            }
+        }
+
+        log::set_max_level(most_permissive);
+    }
+
     pub fn init(self) -> Result<(), log::SetLoggerError> {
+        // Set the initial global max level
+        self.update_global_max_level();
         log::set_boxed_logger(Box::new(self))
     }
 }
@@ -67,7 +89,7 @@ impl OsLogger {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use log::{debug, error, info, trace, warn};
+    use log::{debug, error, info, trace, warn, LevelFilter, Metadata};
 
     #[test]
     fn test_basic_usage() {
@@ -90,5 +112,86 @@ mod tests {
         info!("Info");
         warn!(target: "Database", "Warn");
         error!("Error");
+    }
+
+    #[test]
+    fn test_category_filter_more_permissive_than_global() {
+        let logger = OsLogger::new("com.example.test")
+            .level_filter(LevelFilter::Info) // Global: Info and above
+            .category_level_filter("verbose", LevelFilter::Trace); // Category: more permissive
+
+        // Test that global max level is set to most permissive (Trace)
+        assert_eq!(log::max_level(), LevelFilter::Trace);
+
+        // Test enabled checks
+        let verbose_trace = Metadata::builder()
+            .level(log::Level::Trace)
+            .target("verbose")
+            .build();
+        assert!(logger.enabled(&verbose_trace));
+
+        let verbose_debug = Metadata::builder()
+            .level(log::Level::Debug)
+            .target("verbose")
+            .build();
+        assert!(logger.enabled(&verbose_debug));
+
+        let default_trace = Metadata::builder()
+            .level(log::Level::Trace)
+            .target("default_category")
+            .build();
+        assert!(!logger.enabled(&default_trace)); // Global filter blocks this
+
+        let default_info = Metadata::builder()
+            .level(log::Level::Info)
+            .target("default_category")
+            .build();
+        assert!(logger.enabled(&default_info)); // Global filter allows this
+    }
+
+    #[test]
+    fn test_multiple_category_filters() {
+        let logger = OsLogger::new("com.example.test")
+            .level_filter(LevelFilter::Warn) // Global: Warn and above
+            .category_level_filter("debug_cat", LevelFilter::Debug) // More permissive
+            .category_level_filter("quiet_cat", LevelFilter::Error); // Less permissive
+
+        // Global max level should be most permissive (Debug)
+        assert_eq!(log::max_level(), LevelFilter::Debug);
+
+        // Test debug category (most permissive)
+        let debug_debug = Metadata::builder()
+            .level(log::Level::Debug)
+            .target("debug_cat")
+            .build();
+        assert!(logger.enabled(&debug_debug));
+
+        // Test quiet category (less permissive)
+        let quiet_warn = Metadata::builder()
+            .level(log::Level::Warn)
+            .target("quiet_cat")
+            .build();
+        assert!(!logger.enabled(&quiet_warn)); // Category filter blocks this
+
+        let quiet_error = Metadata::builder()
+            .level(log::Level::Error)
+            .target("quiet_cat")
+            .build();
+        assert!(logger.enabled(&quiet_error)); // Category filter allows this
+    }
+
+    #[test]
+    fn test_dynamic_category_filter_updates() {
+        let logger = OsLogger::new("com.example.test").level_filter(LevelFilter::Info);
+
+        // Initially, max level should be Info
+        logger.update_global_max_level();
+        assert_eq!(log::max_level(), LevelFilter::Info);
+
+        // Add more permissive category filter
+        let _logger = logger.category_level_filter("trace_cat", LevelFilter::Trace);
+
+        // Max level should now be Trace
+        assert_eq!(log::max_level(), LevelFilter::Trace);
     }
 }
