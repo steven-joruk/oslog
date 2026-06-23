@@ -2,23 +2,16 @@
 name = "oslog"
 description = "A minimal safe wrapper around Apple's Logging system"
 repository = "https://github.com/steven-joruk/oslog"
-version = "0.2.1"
+version = "0.3.0"
 authors = ["Steven Joruk <steven@joruk.com>"]
 edition = "2021"
 license = "MIT"
 readme = "README.md"
-keywords = ["log", "logging", "macos", "apple"]
+keywords = ["logging", "macos", "apple", "oslog"]
 categories = ["development-tools::debugging"]
 
-[features]
-default = ["logger"]
-
-# Enables support for the `log` crate.
-logger = ["dashmap", "log"]
+[workspace]
+members = [".", "oslog-macros"]
 
 [dependencies]
-log = { version = "0.4.14", default-features = false, features = ["std"], optional = true }
-dashmap = { version = "5.1.0", optional = true }
-
-[build-dependencies]
-cc = "1.0.73"
+oslog-macros = { path = "oslog-macros", version = "0.3.0" }

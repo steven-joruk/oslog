@@ -1,51 +1,53 @@
 [![Crate](https://img.shields.io/crates/v/oslog.svg)](https://crates.io/crates/oslog)
 
-A minimal wrapper around Apple's unified logging system.
+A minimal safe wrapper around Apple's unified logging system.
 
-By default support for the [log](https://docs.rs/log) crate is provided, but if
-you would prefer just to use the lower level bindings you can disable the
-default features.
-
-When making use of targets (`info!(target: "t", "m");`), you should be aware
-that a new log is allocated and stored in a map for the lifetime of the program.
-I expect log allocations are extremely small, but haven't attempted to verify
-it.
+This crate exposes Apple-specific logging macros that require static OSLog
+format string literals and emit directly through unified logging. It does not
+integrate with the Rust `log` crate; `log` erases the original format string
+before a logger backend can preserve OSLog's static format, typed payloads, and
+privacy metadata.
 
 ## Logging example
 
-This is behind the `logger` feature flag and is enabled by default.
-
 ```rust
 fn main() {
-    OsLogger::new("com.example.test")
-        .level_filter(LevelFilter::Debug)
-        .category_level_filter("Settings", LevelFilter::Trace)
-        .init()
-        .unwrap();
+    let log = oslog::OsLog::new("com.example.test", "network");
 
-    // Maps to OS_LOG_TYPE_DEBUG
-    trace!(target: "Settings", "Trace");
+    let host = "example.com";
+    let elapsed_ms = 2.4f64;
+    let code = 500i32;
+    let token = "secret";
 
-    // Maps to OS_LOG_TYPE_INFO
-    debug!("Debug");
-
-    // Maps to OS_LOG_TYPE_DEFAULT
-    info!(target: "Parsing", "Info");
-
-    // Maps to OS_LOG_TYPE_ERROR
-    warn!("Warn");
-
-    // Maps to OS_LOG_TYPE_FAULT
-    error!("Error");
+    oslog::debug!(&log, "connecting to %{public}s", host);
+    oslog::info!(&log, "connected in %{public}fms", elapsed_ms);
+    oslog::error!(&log, "request failed with code %{public}d", code);
+    oslog::fault!(&log, "token should stay private: %{private}s", token);
 }
 ```
 
-## Limitations
+The format argument must be a string literal. Dynamic format strings are not
+accepted by the macros.
 
-Most of Apple's logging related functions are macros that enable some
-optimizations as well as providing contextual data such as source file location.
+The procedural macros validate supported format syntax and argument counts at
+compile time. They also generate type-constraining calls for each argument, so a
+type mismatch such as this fails during Rust type checking:
 
-By wrapping the macros for use from Rust, we lose those benefits.
+```rust,compile_fail
+let log = oslog::OsLog::global();
+oslog::debug!(&log, "%i", "hi");
+```
 
-Attempting to work around this would involve digging in to opaque types, which
-would be an automatic or eventual rejection from the App store.
+## Supported format arguments
+
+The macros currently support a focused subset of OSLog/printf conversions:
+
+- signed integers: `%hhd`, `%hd`, `%d`, `%ld`, `%lld`, `%zd`
+- unsigned integers: `%hhu`, `%hu`, `%u`, `%lu`, `%llu`, `%zu`
+- floats: `%f`, `%e`, `%g`, `%a` and uppercase variants
+- characters: `%c`
+- strings: `%s`
+- pointers: `%p`
+- privacy tags: `%{public}...` and `%{private}...`
+
+Unsupported conversions produce a compile error.

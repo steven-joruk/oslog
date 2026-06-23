@@ -1,0 +1,13 @@
+[package]
+name = "oslog-macros"
+description = "Procedural macros for oslog"
+repository = "https://github.com/steven-joruk/oslog"
+version = "0.3.0"
+authors = ["Steven Joruk <steven@joruk.com>"]
+edition = "2021"
+license = "MIT"
+
+[lib]
+proc-macro = true
+
+[dependencies]
