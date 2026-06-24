@@ -30,12 +30,18 @@
 mod sys;
 
 use crate::sys::*;
+use std::any::Any;
 use std::ffi::{c_char, c_void, CString};
+use std::mem::MaybeUninit;
+use std::panic::{self, AssertUnwindSafe};
 use std::ptr;
 
 extern crate self as oslog;
 
-pub use oslog_macros::{debug, default, error, fault, info, log};
+pub use oslog_macros::{
+    activity, debug, default, error, fault, info, log, signpost_event, signpost_interval_begin,
+    signpost_interval_end,
+};
 
 #[inline]
 fn to_cstr(message: &str) -> CString {
@@ -50,6 +56,124 @@ pub enum Level {
     Default = OS_LOG_TYPE_DEFAULT,
     Error = OS_LOG_TYPE_ERROR,
     Fault = OS_LOG_TYPE_FAULT,
+}
+
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SignpostType {
+    Event = OS_SIGNPOST_EVENT,
+    IntervalBegin = OS_SIGNPOST_INTERVAL_BEGIN,
+    IntervalEnd = OS_SIGNPOST_INTERVAL_END,
+}
+
+#[repr(u32)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ActivityFlag {
+    Default = OS_ACTIVITY_FLAG_DEFAULT,
+    Detached = OS_ACTIVITY_FLAG_DETACHED,
+    IfNonePresent = OS_ACTIVITY_FLAG_IF_NONE_PRESENT,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ActivityFlags(os_activity_flag_t);
+
+impl ActivityFlags {
+    pub const DEFAULT: Self = Self(OS_ACTIVITY_FLAG_DEFAULT);
+    pub const DETACHED: Self = Self(OS_ACTIVITY_FLAG_DETACHED);
+    pub const IF_NONE_PRESENT: Self = Self(OS_ACTIVITY_FLAG_IF_NONE_PRESENT);
+
+    #[inline]
+    pub const fn empty() -> Self {
+        Self::DEFAULT
+    }
+
+    #[inline]
+    pub const fn from_bits(bits: u32) -> Self {
+        Self(bits)
+    }
+
+    #[inline]
+    pub const fn bits(self) -> u32 {
+        self.0
+    }
+}
+
+impl std::ops::BitOr for ActivityFlags {
+    type Output = Self;
+
+    #[inline]
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Self(self.0 | rhs.0)
+    }
+}
+
+impl std::ops::BitOrAssign for ActivityFlags {
+    #[inline]
+    fn bitor_assign(&mut self, rhs: Self) {
+        self.0 |= rhs.0;
+    }
+}
+
+impl From<ActivityFlag> for ActivityFlags {
+    #[inline]
+    fn from(value: ActivityFlag) -> Self {
+        Self(value as u32)
+    }
+}
+
+impl From<ActivityFlags> for os_activity_flag_t {
+    #[inline]
+    fn from(value: ActivityFlags) -> Self {
+        value.0
+    }
+}
+
+impl From<ActivityFlag> for os_activity_flag_t {
+    #[inline]
+    fn from(value: ActivityFlag) -> Self {
+        value as u32
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SignpostId(os_signpost_id_t);
+
+impl SignpostId {
+    pub const NULL: Self = Self(OS_SIGNPOST_ID_NULL);
+    pub const INVALID: Self = Self(OS_SIGNPOST_ID_INVALID);
+    pub const EXCLUSIVE: Self = Self(OS_SIGNPOST_ID_EXCLUSIVE);
+
+    #[inline]
+    pub fn generate(log: &OsLog) -> Self {
+        Self(unsafe { os_signpost_id_generate(log.as_raw()) })
+    }
+
+    #[inline]
+    pub fn with_pointer<T>(log: &OsLog, ptr: *const T) -> Self {
+        Self(unsafe { os_signpost_id_make_with_pointer(log.as_raw(), ptr.cast::<c_void>()) })
+    }
+
+    #[inline]
+    pub const fn from_raw(value: u64) -> Self {
+        Self(value)
+    }
+
+    #[inline]
+    pub const fn as_raw(self) -> u64 {
+        self.0
+    }
+
+    #[inline]
+    pub const fn is_valid(self) -> bool {
+        self.0 != OS_SIGNPOST_ID_NULL && self.0 != OS_SIGNPOST_ID_INVALID
+    }
+}
+
+impl From<SignpostId> for os_signpost_id_t {
+    #[inline]
+    fn from(value: SignpostId) -> Self {
+        value.0
+    }
 }
 
 pub struct OsLog {
@@ -108,6 +232,11 @@ impl OsLog {
     #[inline]
     pub fn level_is_enabled(&self, level: Level) -> bool {
         unsafe { os_log_type_enabled(self.inner, level as u8) }
+    }
+
+    #[inline]
+    pub fn signposts_are_enabled(&self) -> bool {
+        unsafe { os_signpost_enabled(self.inner) }
     }
 
     #[doc(hidden)]
@@ -384,6 +513,117 @@ pub fn emit_with_specs(
     }
 }
 
+#[doc(hidden)]
+pub fn emit_signpost_with_specs(
+    log: &OsLog,
+    signpost_type: SignpostType,
+    signpost_id: SignpostId,
+    name: &'static [u8],
+    format: &'static [u8],
+    specs: &[FormatSpec],
+    args: &[&dyn Argument],
+) {
+    if !signpost_id.is_valid() || !log.signposts_are_enabled() {
+        return;
+    }
+
+    assert!(
+        name.ends_with(b"\0"),
+        "OSLog signpost name must be null-terminated"
+    );
+    assert!(
+        format.ends_with(b"\0"),
+        "OSLog signpost format string must be null-terminated"
+    );
+    assert_eq!(
+        specs.len(),
+        args.len(),
+        "OSLog signpost format string expects {} arguments, but {} were supplied",
+        specs.len(),
+        args.len()
+    );
+    assert!(
+        args.len() <= u8::MAX as usize,
+        "OSLog supports at most {} arguments",
+        u8::MAX
+    );
+
+    let (mut buffer, _storage) = build_buffer(specs, args);
+
+    unsafe {
+        _os_signpost_emit_with_name_impl(
+            (&__dso_handle as *const c_void).cast_mut(),
+            log.as_raw(),
+            signpost_type as u8,
+            signpost_id.as_raw(),
+            name.as_ptr().cast::<c_char>(),
+            format.as_ptr().cast::<c_char>(),
+            buffer.as_mut_ptr(),
+            buffer.len() as u32,
+        );
+    }
+}
+
+#[doc(hidden)]
+pub fn __private_activity_initiate<R, F>(
+    description: &'static [u8],
+    flags: impl Into<os_activity_flag_t>,
+    body: F,
+) -> R
+where
+    F: FnOnce() -> R,
+{
+    struct Context<F, R> {
+        body: Option<F>,
+        result: MaybeUninit<R>,
+        panic: Option<Box<dyn Any + Send>>,
+    }
+
+    extern "C" fn run<F, R>(context: *mut c_void)
+    where
+        F: FnOnce() -> R,
+    {
+        let context = unsafe { &mut *(context.cast::<Context<F, R>>()) };
+        let body = context
+            .body
+            .take()
+            .expect("OSLog activity body was already taken");
+        match panic::catch_unwind(AssertUnwindSafe(body)) {
+            Ok(result) => {
+                context.result.write(result);
+            }
+            Err(payload) => context.panic = Some(payload),
+        };
+    }
+
+    assert!(
+        description.ends_with(b"\0"),
+        "OSLog activity description must be null-terminated"
+    );
+
+    let mut context = Context {
+        body: Some(body),
+        result: MaybeUninit::uninit(),
+        panic: None,
+    };
+
+    unsafe {
+        _os_activity_initiate_f(
+            (&__dso_handle as *const c_void).cast_mut(),
+            description.as_ptr().cast::<c_char>(),
+            flags.into(),
+            (&mut context as *mut Context<F, R>).cast::<c_void>(),
+            run::<F, R>,
+        );
+    }
+
+    if let Some(payload) = context.panic {
+        panic::resume_unwind(payload);
+    }
+
+    unsafe { context.result.assume_init() }
+}
+
 fn build_buffer(specs: &[FormatSpec], args: &[&dyn Argument]) -> (Vec<u8>, Vec<CString>) {
     let mut storage = Vec::new();
     let mut buffer = Vec::with_capacity(2 + args.len() * 10);
@@ -466,6 +706,38 @@ mod tests {
         crate::debug!(&log, "%{public}s", "str");
         crate::debug!(&log, "%{public}s", string);
         crate::debug!(&log, "%{public}p", &log as *const OsLog);
+    }
+
+    #[test]
+    fn signpost_macros_accept_supported_argument_types() {
+        let log = OsLog::new("com.example.oslog", "PointsOfInterest");
+        let signpost_id = SignpostId::EXCLUSIVE;
+
+        crate::signpost_event!(&log, signpost_id, "event");
+        crate::signpost_interval_begin!(
+            &log,
+            signpost_id,
+            "interval",
+            "%{public}d %{private}s",
+            42i32,
+            "secret"
+        );
+        crate::signpost_interval_end!(&log, signpost_id, "interval", "%{public}f", 1.5f64);
+    }
+
+    #[test]
+    fn activity_macro_returns_body_value() {
+        let value = crate::activity!("activity macro test", ActivityFlags::DEFAULT, { 42 });
+
+        assert_eq!(value, 42);
+    }
+
+    #[test]
+    fn signpost_ids_report_validity() {
+        assert!(!SignpostId::NULL.is_valid());
+        assert!(!SignpostId::INVALID.is_valid());
+        assert!(SignpostId::EXCLUSIVE.is_valid());
+        assert!(SignpostId::from_raw(1).is_valid());
     }
 
     #[test]

@@ -26,6 +26,35 @@ fn main() {
 }
 ```
 
+## Activities and signposts
+
+Activities and signposts follow Apple's literal requirements too: activity
+descriptions, signpost names, and signpost message formats must be string
+literals.
+
+```rust
+let log = oslog::OsLog::new("com.example.test", "PointsOfInterest");
+
+let value = oslog::activity!("load timeline", {
+    let signpost_id = oslog::SignpostId::generate(&log);
+
+    oslog::signpost_interval_begin!(
+        &log,
+        signpost_id,
+        "database fetch",
+        "limit=%{public}d",
+        50i32
+    );
+
+    // Do work here.
+
+    oslog::signpost_interval_end!(&log, signpost_id, "database fetch");
+    42
+});
+
+assert_eq!(value, 42);
+```
+
 The format argument must be a string literal. Dynamic format strings are not
 accepted by the macros.
 

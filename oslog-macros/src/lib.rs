@@ -30,8 +30,38 @@ pub fn fault(input: TokenStream) -> TokenStream {
     expand(input, Some("::oslog::Level::Fault"))
 }
 
+#[proc_macro]
+pub fn signpost_event(input: TokenStream) -> TokenStream {
+    expand_signpost(input, "::oslog::SignpostType::Event")
+}
+
+#[proc_macro]
+pub fn signpost_interval_begin(input: TokenStream) -> TokenStream {
+    expand_signpost(input, "::oslog::SignpostType::IntervalBegin")
+}
+
+#[proc_macro]
+pub fn signpost_interval_end(input: TokenStream) -> TokenStream {
+    expand_signpost(input, "::oslog::SignpostType::IntervalEnd")
+}
+
+#[proc_macro]
+pub fn activity(input: TokenStream) -> TokenStream {
+    match expand_activity_inner(input) {
+        Ok(output) => output.parse().expect("generated invalid Rust"),
+        Err(message) => compile_error(&message),
+    }
+}
+
 fn expand(input: TokenStream, fixed_level: Option<&str>) -> TokenStream {
     match expand_inner(input, fixed_level) {
+        Ok(output) => output.parse().expect("generated invalid Rust"),
+        Err(message) => compile_error(&message),
+    }
+}
+
+fn expand_signpost(input: TokenStream, signpost_type: &str) -> TokenStream {
+    match expand_signpost_inner(input, signpost_type) {
         Ok(output) => output.parse().expect("generated invalid Rust"),
         Err(message) => compile_error(&message),
     }
@@ -107,6 +137,128 @@ fn expand_inner(input: TokenStream, fixed_level: Option<&str>) -> Result<String,
         log = log,
         level = level,
         args_tokens = args_tokens,
+    ))
+}
+
+fn expand_signpost_inner(input: TokenStream, signpost_type: &str) -> Result<String, String> {
+    let parts = split_top_level_commas(input);
+
+    if parts.len() < 3 {
+        return Err("expected log, signpost ID, name and optional format arguments".into());
+    }
+
+    let log = tokens_to_string(&parts[0]);
+    let signpost_id = tokens_to_string(&parts[1]);
+    let name_literal = parse_named_literal("OSLog signpost name", &parts[2])?;
+    let (format_literal, args) = if parts.len() == 3 {
+        (
+            ParsedLiteral {
+                source: "\"\"".into(),
+                value: String::new(),
+            },
+            &parts[3..],
+        )
+    } else {
+        (
+            parse_named_literal("OSLog signpost format", &parts[3])?,
+            &parts[4..],
+        )
+    };
+    let specs = parse_format_specs(format_literal.value.as_bytes())?;
+    let spec_count = specs.len();
+
+    if specs.len() != args.len() {
+        return Err(format!(
+            "OSLog signpost format string expects {} arguments, but {} were supplied",
+            specs.len(),
+            args.len()
+        ));
+    }
+
+    if specs.len() > u8::MAX as usize {
+        return Err(format!("OSLog supports at most {} arguments", u8::MAX));
+    }
+
+    let specs_tokens = specs
+        .iter()
+        .map(|spec| {
+            format!(
+                "::oslog::FormatSpec::new(::oslog::ArgumentKind::{}, {}, {})",
+                spec.kind.as_rust(),
+                spec.privacy,
+                spec.size
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let args_tokens = args
+        .iter()
+        .zip(specs.iter())
+        .map(|(arg, spec)| spec.checker(tokens_to_string(arg)))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    Ok(format!(
+        r#"{{
+            let __oslog_log = ({log});
+            let __oslog_signpost_id = ({signpost_id});
+            if __oslog_signpost_id.is_valid() && __oslog_log.signposts_are_enabled() {{
+                #[link_section = "__TEXT,__oslogstring,cstring_literals"]
+                static NAME: [u8; concat!({name_source}, "\0").len()] =
+                    ::oslog::__private_str_to_array::<{{ concat!({name_source}, "\0").len() }}>(concat!({name_source}, "\0"));
+                #[link_section = "__TEXT,__oslogstring,cstring_literals"]
+                static FORMAT: [u8; concat!({format_source}, "\0").len()] =
+                    ::oslog::__private_str_to_array::<{{ concat!({format_source}, "\0").len() }}>(concat!({format_source}, "\0"));
+                static SPECS: [::oslog::FormatSpec; {spec_count}] = [{specs_tokens}];
+                ::oslog::emit_signpost_with_specs(
+                    __oslog_log,
+                    {signpost_type},
+                    __oslog_signpost_id,
+                    &NAME,
+                    &FORMAT,
+                    &SPECS,
+                    &[{args_tokens}],
+                );
+            }}
+        }}"#,
+        log = log,
+        signpost_id = signpost_id,
+        name_source = name_literal.source,
+        format_source = format_literal.source,
+        spec_count = spec_count,
+        specs_tokens = specs_tokens,
+        signpost_type = signpost_type,
+        args_tokens = args_tokens,
+    ))
+}
+
+fn expand_activity_inner(input: TokenStream) -> Result<String, String> {
+    let parts = split_top_level_commas(input);
+
+    if parts.len() != 2 && parts.len() != 3 {
+        return Err("expected activity description, optional flags and body".into());
+    }
+
+    let description = parse_named_literal("OSLog activity description", &parts[0])?;
+    let (flags, body) = if parts.len() == 2 {
+        (
+            "::oslog::ActivityFlags::DEFAULT".into(),
+            tokens_to_string(&parts[1]),
+        )
+    } else {
+        (tokens_to_string(&parts[1]), tokens_to_string(&parts[2]))
+    };
+
+    Ok(format!(
+        r#"{{
+            #[link_section = "__TEXT,__oslogstring,cstring_literals"]
+            static DESCRIPTION: [u8; concat!({description_source}, "\0").len()] =
+                ::oslog::__private_str_to_array::<{{ concat!({description_source}, "\0").len() }}>(concat!({description_source}, "\0"));
+            ::oslog::__private_activity_initiate(&DESCRIPTION, {flags}, || {body})
+        }}"#,
+        description_source = description.source,
+        flags = flags,
+        body = body,
     ))
 }
 
@@ -219,21 +371,25 @@ struct ParsedLiteral {
 }
 
 fn parse_format_literal(tokens: &[TokenTree]) -> Result<ParsedLiteral, String> {
+    parse_named_literal("OSLog format", tokens)
+}
+
+fn parse_named_literal(kind: &str, tokens: &[TokenTree]) -> Result<ParsedLiteral, String> {
     if tokens.len() != 1 {
-        return Err("OSLog format must be a single string literal".into());
+        return Err(format!("{kind} must be a single string literal"));
     }
 
     let literal = match &tokens[0] {
         TokenTree::Literal(literal) => literal,
-        _ => return Err("OSLog format must be a string literal".into()),
+        _ => return Err(format!("{kind} must be a string literal")),
     };
     let source = literal.to_string();
-    let value = parse_string_literal(literal)?;
+    let value = parse_string_literal(kind, literal)?;
 
     Ok(ParsedLiteral { source, value })
 }
 
-fn parse_string_literal(literal: &Literal) -> Result<String, String> {
+fn parse_string_literal(kind: &str, literal: &Literal) -> Result<String, String> {
     let source = literal.to_string();
 
     if source.starts_with('"') {
@@ -241,7 +397,7 @@ fn parse_string_literal(literal: &Literal) -> Result<String, String> {
     } else if source.starts_with('r') {
         parse_raw_string(&source)
     } else {
-        Err("OSLog format must be a string literal".into())
+        Err(format!("{kind} must be a string literal"))
     }
 }
 
