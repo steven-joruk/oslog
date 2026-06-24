@@ -341,6 +341,14 @@ impl Argument for bool {
     }
 }
 
+impl Argument for char {
+    #[inline]
+    fn encode(&self, spec: FormatSpec, buffer: &mut Vec<u8>, storage: &mut Vec<CString>) {
+        let value = *self as u32;
+        value.encode(spec, buffer, storage);
+    }
+}
+
 impl Argument for str {
     #[inline]
     fn encode(&self, spec: FormatSpec, buffer: &mut Vec<u8>, storage: &mut Vec<CString>) {
@@ -435,7 +443,7 @@ marker_trait!(Unsigned4Argument: u32);
 marker_trait!(Unsigned8Argument: u64);
 marker_trait!(UnsignedPtrArgument: usize);
 marker_trait!(FloatArgument: f32, f64);
-marker_trait!(CharArgument: i32, u32);
+marker_trait!(CharArgument: char, i32, u32);
 marker_trait!(StringArgument: str, &str, String, &String);
 
 #[doc(hidden)]
@@ -703,6 +711,7 @@ mod tests {
         crate::debug!(&log, "%{public}f", 1.5f64);
         crate::debug!(&log, "%{public}f", 1.5f32);
         crate::debug!(&log, "%{public}c", 65i32);
+        crate::debug!(&log, "%{public}c", 'A');
         crate::debug!(&log, "%{public}s", "str");
         crate::debug!(&log, "%{public}s", string);
         crate::debug!(&log, "%{public}p", &log as *const OsLog);
@@ -780,5 +789,16 @@ mod tests {
 
         assert_eq!(&buffer[..2], &[0, 1]);
         assert_eq!(&buffer[2..4], &[0x02, std::mem::size_of::<usize>() as u8]);
+    }
+
+    #[test]
+    fn encodes_char_buffer() {
+        let specs = [FormatSpec::new(ArgumentKind::Scalar, 2, 4)];
+        let value = 'A';
+        let (buffer, _storage) = build_buffer(&specs, &[&value]);
+
+        assert_eq!(&buffer[..2], &[0, 1]);
+        assert_eq!(&buffer[2..4], &[0x02, 4]);
+        assert_eq!(&buffer[4..8], &65u32.to_ne_bytes());
     }
 }
