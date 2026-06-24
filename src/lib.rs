@@ -735,6 +735,35 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Run under Instruments to inspect emitted signposts."]
+    fn signpost_instruments_smoke() {
+        use std::time::Duration;
+
+        let log = OsLog::new("com.example.oslog", "PointsOfInterest");
+        eprintln!("os_signpost_enabled = {}", log.signposts_are_enabled());
+
+        for iteration in 0..10i32 {
+            let signpost_id = SignpostId::EXCLUSIVE;
+            crate::signpost_event!(&log, signpost_id, "test event", "%{public}d", iteration);
+            crate::signpost_interval_begin!(
+                &log,
+                signpost_id,
+                "test interval",
+                "%{public}d",
+                iteration
+            );
+            std::thread::sleep(Duration::from_millis(100));
+            crate::signpost_interval_end!(
+                &log,
+                signpost_id,
+                "test interval",
+                "%{public}d",
+                iteration
+            );
+        }
+    }
+
+    #[test]
     fn activity_macro_returns_body_value() {
         let value = crate::activity!("activity macro test", ActivityFlags::DEFAULT, { 42 });
 
